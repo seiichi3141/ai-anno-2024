@@ -1,0 +1,19 @@
+[project]
+name = "realtime-voice"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "cartesia>=2.0.4",
+    "fastapi>=0.115.12",
+    "ffmpeg-python>=0.2.0",
+    "fugashi>=1.4.3",
+    "ipadic>=1.0.0",
+    "ja-ginza>=5.2.0",
+    "ja-ginza-electra>=5.2.0",
+    "numpy>=2.2.6",
+    "psycopg[binary]>=3.2.9",
+    "python-dotenv>=1.1.0",
+    "uvicorn>=0.34.2",
+]

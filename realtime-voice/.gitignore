@@ -1,0 +1,56 @@
+# Python関連
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 仮想環境
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# uv関連
+.uv/
+.venv/
+uv.db
+
+# ログファイル
+*.log
+logs/
+log/
+
+# 一時ファイル
+temp_audio/*
+!temp_audio/.gitkeep
+
+# キャッシュディレクトリ
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.cache/
+
+# macOS関連
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# VS Code関連
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+node_modules/

@@ -1,0 +1,21 @@
+services:
+  api:
+    build: .
+    restart: always
+    volumes:
+      - .:/app
+      - ./temp_audio:/app/temp_audio
+    ports:
+      - 8000:8000
+    env_file:
+      - .env
+    depends_on:
+      - pg
+
+  pg:
+    image: postgres:16.3-alpine
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: example
+    ports:
+      - 5432:5432
