@@ -1,6 +1,6 @@
 """
 TTS（Text-to-Speech）関連のAPIルーター
-PCM専用の音声合成システム + WebM形式対応
+PCM専用の音声合成システム + 音声キャッシュ機能
 """
 import os
 import io
@@ -11,6 +11,7 @@ from src.models import TTSRequest
 from src.auth import verify_api_key
 from src.services.streaming_service import generate_pcm_stream_by_sentences
 from src.services.audio_service import generate_tts_pcm_bytes
+from src.services.voice_cache_service import get_cache_stats, clear_old_cache_entries
 from src.utils.file_utils import cleanup_old_files, generate_filename, get_file_path
 from src.utils.webm_utils import pcm_to_webm, pcm_stream_to_webm, is_ffmpeg_available
 
@@ -19,8 +20,8 @@ router = APIRouter(prefix="/tts", tags=["TTS"])
 @router.post("/stream")
 async def stream_tts(
     request: TTSRequest, 
-    background_tasks: BackgroundTasks, 
-    api_key: str = Depends(verify_api_key)
+    api_key: str = Depends(verify_api_key),
+    background_tasks: BackgroundTasks = None
 ):
     """テキストを文単位で音声に変換し、PCM s16le形式でストリーミング配信する"""
     try:
@@ -41,12 +42,19 @@ async def stream_tts(
         async def stream_generator():
             nonlocal all_pcm_data
             
-            async for chunk in generate_pcm_stream_by_sentences(text=request.text):
+            async for chunk in generate_pcm_stream_by_sentences(
+                text=request.text,
+                voice_id=getattr(request, 'voice_id', None),
+                language=getattr(request, 'language', 'ja'),
+                speed=getattr(request, 'speed', 'normal')
+            ):
                 # デバッグ用にPCMファイルに保存
                 debug_pcm_file.write(chunk)
                 # 後でWebM変換用に保持
                 all_pcm_data.extend(chunk)
                 yield chunk
+
+            print(f"PCMストリーミング完了: {debug_pcm_filename}")
         
         # ストリーミングレスポンスを作成
         response = StreamingResponse(
@@ -65,25 +73,15 @@ async def stream_tts(
         # ストリーミング終了後にファイルをクローズし、WebM形式でも保存するタスクを追加
         async def finish_streaming():
             debug_pcm_file.close()
-            
-            # FFmpegが利用可能な場合はWebM形式でも保存
-            if is_ffmpeg_available():
-                try:
-                    # PCMデータをWebM形式に変換
-                    webm_data = pcm_to_webm(bytes(all_pcm_data))
-                    
-                    # WebMファイルに保存
-                    with open(debug_webm_filepath, 'wb') as f:
-                        f.write(webm_data)
-                        
-                    print(f"WebM形式でも保存しました: {debug_webm_filename}")
-                except Exception as e:
-                    print(f"WebM形式での保存に失敗しました: {e}")
         
-        background_tasks.add_task(finish_streaming)
-        
-        # 古いファイルのクリーンアップ
-        background_tasks.add_task(cleanup_old_files)
+        if background_tasks:
+            background_tasks.add_task(finish_streaming)
+            # 古いファイルのクリーンアップ
+            background_tasks.add_task(cleanup_old_files)
+        else:
+            # BackgroundTasksがない場合は直接実行
+            finish_streaming()
+            cleanup_old_files()
         
         return response
     except Exception as e:
@@ -92,8 +90,8 @@ async def stream_tts(
 @router.post("/bytes")
 async def get_tts_bytes(
     request: TTSRequest, 
-    background_tasks: BackgroundTasks, 
-    api_key: str = Depends(verify_api_key)
+    api_key: str = Depends(verify_api_key),
+    background_tasks: BackgroundTasks = None
 ):
     """テキストを音声に変換してPCM s16le形式のバイナリデータを返す"""
     try:
@@ -101,7 +99,8 @@ async def get_tts_bytes(
         pcm_data = generate_tts_pcm_bytes(
             text=request.text,
             voice_id=getattr(request, 'voice_id', None),
-            language=getattr(request, 'language', 'ja')
+            language=getattr(request, 'language', 'ja'),
+            speed=getattr(request, 'speed', 'normal')
         )
         
         # デバッグ用にPCMファイルに保存
@@ -110,24 +109,11 @@ async def get_tts_bytes(
         with open(debug_pcm_filepath, 'wb') as f:
             f.write(pcm_data)
         
-        # FFmpegが利用可能な場合はWebM形式でも保存
-        if is_ffmpeg_available():
-            try:
-                # PCMデータをWebM形式に変換
-                webm_data = pcm_to_webm(pcm_data)
-                
-                # WebMファイルに保存
-                debug_webm_filename = generate_filename(request.text, "webm", prefix="debug_webm_")
-                debug_webm_filepath = get_file_path(debug_webm_filename)
-                with open(debug_webm_filepath, 'wb') as f:
-                    f.write(webm_data)
-                    
-                print(f"WebM形式でも保存しました: {debug_webm_filename}")
-            except Exception as e:
-                print(f"WebM形式での保存に失敗しました: {e}")
-        
         # 古いファイルのクリーンアップ
-        background_tasks.add_task(cleanup_old_files)
+        if background_tasks:
+            background_tasks.add_task(cleanup_old_files)
+        else:
+            cleanup_old_files()
         
         return StreamingResponse(
             io.BytesIO(pcm_data),
@@ -147,8 +133,8 @@ async def get_tts_bytes(
 @router.post("/stream_webm")
 async def stream_tts_webm(
     request: TTSRequest, 
-    background_tasks: BackgroundTasks, 
-    api_key: str = Depends(verify_api_key)
+    api_key: str = Depends(verify_api_key),
+    background_tasks: BackgroundTasks = None
 ):
     """テキストを文単位で音声に変換し、WebM形式でストリーミング配信する"""
     try:
@@ -175,10 +161,13 @@ async def stream_tts_webm(
                 yield chunk
                 
         # ストリーミング終了後にファイルをクローズするタスクを追加
-        background_tasks.add_task(lambda: debug_file.close())
-        
-        # 古いファイルのクリーンアップ
-        background_tasks.add_task(cleanup_old_files)
+        if background_tasks:
+            background_tasks.add_task(lambda: debug_file.close())
+            # 古いファイルのクリーンアップ
+            background_tasks.add_task(cleanup_old_files)
+        else:
+            debug_file.close()
+            cleanup_old_files()
         
         return StreamingResponse(
             stream_generator(),
@@ -195,8 +184,8 @@ async def stream_tts_webm(
 @router.post("/bytes_webm")
 async def get_tts_bytes_webm(
     request: TTSRequest, 
-    background_tasks: BackgroundTasks, 
-    api_key: str = Depends(verify_api_key)
+    api_key: str = Depends(verify_api_key),
+    background_tasks: BackgroundTasks = None
 ):
     """テキストを音声に変換してWebM形式のバイナリデータを返す"""
     try:
@@ -220,7 +209,10 @@ async def get_tts_bytes_webm(
             f.write(webm_data)
         
         # 古いファイルのクリーンアップ
-        background_tasks.add_task(cleanup_old_files)
+        if background_tasks:
+            background_tasks.add_task(cleanup_old_files)
+        else:
+            cleanup_old_files()
         
         return StreamingResponse(
             io.BytesIO(webm_data),
@@ -233,3 +225,37 @@ async def get_tts_bytes_webm(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"WebM音声生成に失敗しました: {str(e)}")
+
+@router.get("/cache/stats")
+async def get_voice_cache_stats(api_key: str = Depends(verify_api_key)):
+    """音声キャッシュの統計情報を取得する"""
+    try:
+        stats = get_cache_stats()
+        return {
+            "message": "音声キャッシュ統計情報",
+            "cache_stats": stats
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"キャッシュ統計情報の取得に失敗しました: {str(e)}")
+
+@router.delete("/cache/cleanup")
+async def cleanup_voice_cache(
+    days: int = 30,
+    api_key: str = Depends(verify_api_key),
+    background_tasks: BackgroundTasks = None
+):
+    """指定日数より古い音声キャッシュを削除する"""
+    try:
+        if background_tasks:
+            background_tasks.add_task(clear_old_cache_entries, days)
+            return {
+                "message": f"{days}日以上前のキャッシュエントリのクリーンアップを開始しました"
+            }
+        else:
+            # BackgroundTasksがない場合は直接実行
+            clear_old_cache_entries(days)
+            return {
+                "message": f"{days}日以上前のキャッシュエントリをクリーンアップしました"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"キャッシュクリーンアップに失敗しました: {str(e)}")

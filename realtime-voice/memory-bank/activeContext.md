@@ -8,8 +8,17 @@
 
    - PCM s16le ストリーミング配信機能（`/tts/stream`）
    - PCMバイナリデータ直接取得機能（`/tts/bytes`）
+   - 音声キャッシュ統計情報取得（`/tts/cache/stats`）
+   - 音声キャッシュクリーンアップ（`/tts/cache/cleanup`）
 
-2. **高品質音声処理の最適化**
+2. **音声キャッシュシステムの実装**
+
+   - SQLiteベースの高速音声キャッシュ
+   - テキスト+パラメータのハッシュベースキー
+   - 同一テキストの音声合成再利用による高速化
+   - 自動的な古いエントリ削除機能
+
+3. **高品質音声処理の最適化**
 
    - 文単位での音声合成による自然な読み上げ
    - GINZA（日本語NLP）による高精度な文分割
@@ -22,35 +31,62 @@
    - 入力バリデーションとエラーハンドリング
 
 4. **モジュール化されたアーキテクチャ**
-   - サービス層の分離（audio_service, streaming_service, text_service）
+   - サービス層の分離（audio_service, streaming_service, text_service, voice_cache_service）
    - ルーター層の分離（tts_router）
    - ユーティリティ層の分離（file_utils）
+   - キャッシュサービスの統合実装
 
 ## 最近の変更
 
-1. **WebM関連処理の完全削除**
+1. **音声キャッシュシステムの完全実装**
+
+   - `voice_cache_service.py`の新規作成
+   - SQLiteデータベースによる音声データキャッシュ
+   - ハッシュベースキーによる高速検索
+   - キャッシュ統計情報とクリーンアップ機能
+   - 既存サービスへのキャッシュ機能統合
+
+2. **WebM関連処理の完全削除**
 
    - webm_utils.py ファイル削除
    - WebM保存・ダウンロード機能削除（`/tts/save`, `/tts/download`）
    - Opus/WebMエンコーディング処理削除
    - フロントエンドWebM選択UI削除
 
-2. **PCM専用システムへの変更**
+3. **PCM専用システムへの変更**
 
    - `/tts/stream` - PCM s16le形式でのリアルタイムストリーミング配信
    - `/tts/bytes` - PCM s16le形式のバイナリデータ直接取得
    - PCM専用のフロントエンドフック実装
 
-3. **高品質音声処理ロジック（PCM専用）**
+4. **要件定義書の更新**
+
+   - 音声キャッシュ機能の詳細仕様追加
+   - API仕様の最新化
+   - 性能要件の明確化
+
+5. **voice_idのデフォルト値修正**
+
+   - models.pyのvoice_idフィールドでDEFAULT_VOICE_IDを使用
+   - 環境変数による音声IDの統一管理
+
+6. **キャッシュ機能デバッグと修正**
+
+   - audio_service.pyの重複する`save_voice_to_cache`呼び出しを修正
+   - 二回目以降のリクエストブロック問題を解決
+   - streaming_service.pyでのキャッシュ統合を改善
+
+7. **高品質音声処理ロジック（PCM専用）**
 
    - 文単位での音声合成処理（GINZA NLPライブラリ使用）
    - PCMデータの自動正規化とエラーハンドリング
    - 文間の自動ポーズ挿入（0.2秒のサイレンス）
 
-4. **モジュール化とコード構造の改善**
-   - サービス層の分離（streaming_service, audio_service, text_service）
+8. **モジュール化とコード構造の改善**
+   - サービス層の分離（streaming_service, audio_service, text_service, voice_cache_service）
    - ルーター層の分離（tts_router）
    - ファイル管理の改善（file_utils）
+   - キャッシュサービスの統合
 
 ## 次のステップ
 

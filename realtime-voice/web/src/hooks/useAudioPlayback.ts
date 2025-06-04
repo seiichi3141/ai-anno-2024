@@ -138,7 +138,6 @@ export function useAudioPlayback({
           body: JSON.stringify({
             text: text,
             language: "ja",
-            voice_id: "2334b692-d045-48b5-ac45-d7bf5785026f",
             speed: "normal",
           }),
         }
